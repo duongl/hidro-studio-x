@@ -1,0 +1,6 @@
+{
+  "name": "Hidro AI Studio 2.0",
+  "description": "Premium cinematic AI content production platform with a dedicated consistent DNA lock engine.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

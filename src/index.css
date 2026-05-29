@@ -1,0 +1,264 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --color-dark-bg: #050505;
+  --color-dark-panel: #0D0D0D;
+  --color-neon-accent: #66FF99;
+  --color-neon-secondary: #4DA6FF;
+}
+
+:root {
+  --bg: #050505;
+  --panel: #0D0D0D;
+  --glass: rgba(255, 255, 255, 0.05);
+  --accent: #66FF99;
+  --secondary: #4DA6FF;
+  --text-main: #FFFFFF;
+  --text-muted: #888888;
+  --rounded: 24px;
+  --blur: 24px;
+}
+
+/* Fallback & Custom class equivalents from design specification */
+.glass {
+  background: var(--glass);
+  backdrop-filter: blur(var(--blur));
+  -webkit-backdrop-filter: blur(var(--blur));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--rounded);
+}
+
+.sidebar {
+  width: 260px;
+  background: var(--panel);
+  border-right: 1px solid rgba(255, 255, 255, 0.05);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+.main-content {
+  flex: 1;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  background: radial-gradient(circle at top right, rgba(102, 255, 153, 0.03), transparent),
+              radial-gradient(circle at bottom left, rgba(77, 166, 255, 0.03), transparent);
+}
+
+.inspector {
+  width: 320px;
+  background: var(--panel);
+  border-left: 1px solid rgba(255, 255, 255, 0.05);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  color: var(--text-muted);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+}
+
+.nav-item:hover {
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.nav-item.active {
+  color: var(--accent);
+  background: rgba(102, 255, 153, 0.05);
+}
+
+.dna-card {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.01);
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.dna-card:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.dna-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.dna-value {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text-main);
+}
+
+.scene-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+  flex: 1;
+}
+
+.scene-card {
+  position: relative;
+  background: var(--panel);
+  border-radius: var(--rounded);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.scene-thumb {
+  height: 160px;
+  background: #1a1a1a;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.scene-meta {
+  padding: 16px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.status-badge {
+  font-size: 10px;
+  padding: 4px 8px;
+  border-radius: 99px;
+  background: rgba(102, 255, 153, 0.1);
+  color: var(--accent);
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #000;
+  padding: 12px 24px;
+  border-radius: 12px;
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.2s ease-in-out;
+}
+
+.btn-primary:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.dna-lock-tag {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  padding: 4px 8px;
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-size: 9px;
+  font-weight: 800;
+  border-radius: 4px;
+  letter-spacing: 1px;
+}
+
+.pill {
+  background: rgba(255, 255, 255, 0.05);
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* Custom premium scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.01);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* Liquid Glass animations and classes */
+.liquid-glass {
+  background: rgba(255, 255, 255, 0.035);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 24px;
+}
+
+.liquid-glass-active {
+  background: rgba(102, 255, 153, 0.04);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(102, 255, 153, 0.15);
+  border-radius: 24px;
+}
+
+.liquid-glass-input {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.liquid-glass-input:focus {
+  border-color: rgba(102, 255, 153, 0.5);
+  box-shadow: 0 0 15px rgba(102, 255, 153, 0.1);
+  outline: none;
+}
+
+body {
+  background-color: #050505;
+  color: #e5e5e5;
+  font-family: var(--font-sans);
+}
+
+/* Liquid Glow highlights */
+.neon-glow-accent {
+  box-shadow: 0 0 25px rgba(102, 255, 153, 0.15);
+}
+
+.neon-glow-secondary {
+  box-shadow: 0 0 25px rgba(77, 166, 255, 0.15);
+}
