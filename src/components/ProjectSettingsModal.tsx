@@ -321,11 +321,11 @@ export default function ProjectSettingsModal({ isOpen, onClose, project, onUpdat
 
               {/* Video Length Mode Selector */}
               <div className="space-y-2">
-                <label className="text-xs font-mono text-gray-400 block">
+                <label className="text-xs font-mono text-[#4DA6FF] block font-bold uppercase tracking-wider">
                   {lang === 'en' ? 'Video Length Duration' : 'Độ dài video'}
                 </label>
                 <div className="grid grid-cols-4 gap-1">
-                  {['Auto', '15s', '30s', '60s'].map(m => (
+                  {['Auto', '15s', '30s', '45s'].map(m => (
                     <button
                       key={m}
                       type="button"
@@ -344,12 +344,13 @@ export default function ProjectSettingsModal({ isOpen, onClose, project, onUpdat
                   ))}
                 </div>
                 <div className="grid grid-cols-4 gap-1">
-                  {['90s', '120s', 'Custom'].map(m => (
+                  {['60s', '90s', '120s', 'Custom'].map(m => (
                     <button
                       key={m}
                       type="button"
                       onClick={() => {
                         setVideoLengthMode(m);
+                        if (m !== 'Custom' && m !== 'Auto') setCustomLength(parseInt(m));
                       }}
                       className={`py-1.5 text-[10px] rounded border font-mono transition-all uppercase ${
                         videoLengthMode === m
@@ -360,7 +361,6 @@ export default function ProjectSettingsModal({ isOpen, onClose, project, onUpdat
                       {m}
                     </button>
                   ))}
-                  <div className="col-span-1" />
                 </div>
 
                 {videoLengthMode === 'Custom' && (

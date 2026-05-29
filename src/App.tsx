@@ -19,12 +19,14 @@ import { useLanguage } from './utils/i18n';
 import { useBackgroundQueue } from './context/BackgroundQueueContext';
 import ProductionCenter from './components/ProductionCenter';
 import ProjectRecoveryPopup from './components/ProjectRecoveryPopup';
+import { ProjectDashboard } from './components/ProjectDashboard';
 
 export default function App() {
   const { lang, t, setLang } = useLanguage();
   const [apiOnline, setApiOnline] = useState<boolean | null>(null);
   const [inspectorSceneIndex, setInspectorSceneIndex] = useState<number>(0);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isWizardOpen, setIsWizardOpen] = useState(false);
 
   // PROJECT MEMORY & STATE CONSTRAINTS (Loaded from storage if present)
   const { activeProject, setActiveProject } = useBackgroundQueue();
@@ -77,6 +79,7 @@ export default function App() {
   const handleProjectCreated = (newProj: Project) => {
     setActiveProject(newProj);
     setActiveTab('assets');
+    setIsWizardOpen(false);
   };
 
   const handleUpdateAssets = (newAssets: ProjectAssets) => {
@@ -273,6 +276,15 @@ export default function App() {
     }
   };
 
+  if (!activeProject && !isWizardOpen) {
+    return (
+      <ProjectDashboard
+        onSelectProject={(p) => setActiveProject(p)}
+        onOpenWizard={() => setIsWizardOpen(true)}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#050505] text-[#e5e5e5] relative font-sans flex flex-col justify-between" id="app_viewport">
       {/* Liquid Ambient Blurred Backdrop Blobs */}
@@ -330,12 +342,20 @@ export default function App() {
           )}
 
           {activeProject && (
-            <button
-              onClick={handleClearActive}
-              className="text-[10px] font-mono tracking-wider border border-red-500/10 px-3 py-1.5 bg-red-500/5 hover:bg-red-500/15 text-red-400 rounded-full transition-colors uppercase cursor-pointer"
-            >
-              {t('closeProject')}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setActiveProject(null)}
+                className="px-3.5 py-1.5 rounded-full border border-white/10 bg-white/[0.02] hover:bg-white/[0.04] text-xs font-semibold hover:text-emerald-400 transition text-slate-300 font-mono cursor-pointer flex items-center gap-1.5"
+              >
+                <span>← Dashboard</span>
+              </button>
+              <button
+                onClick={handleClearActive}
+                className="text-[10px] font-mono tracking-wider border border-red-500/20 px-3 py-1.5 bg-red-500/5 hover:bg-red-500/15 text-red-400 rounded-full transition-colors uppercase cursor-pointer"
+              >
+                {t('closeProject')}
+              </button>
+            </div>
           )}
         </div>
       </header>
@@ -347,7 +367,8 @@ export default function App() {
             <ProjectWizard
               onProjectCreated={handleProjectCreated}
               activeProject={activeProject}
-              onClearActive={handleClearActive}
+              onClearActive={() => setIsWizardOpen(false)}
+              forceOpen={true}
             />
           </div>
         ) : (
@@ -390,12 +411,12 @@ export default function App() {
             <div className="flex bg-[#0D0D0D] p-1.5 rounded-2xl border border-white/5 overflow-x-auto gap-1 main-scrollbar justify-start" id="pipeline_timeline_breadcrumb">
               {[
                 { id: 'assets', label: tabLabelMap.assets, locked: false },
-                { id: 'director', label: tabLabelMap.director, locked: !hasAssets },
-                { id: 'script', label: tabLabelMap.script, locked: !hasDNA },
-                { id: 'visuals', label: tabLabelMap.visuals, locked: !hasScript },
-                { id: 'motion', label: tabLabelMap.motion, locked: !hasScript },
-                { id: 'mastering', label: tabLabelMap.mastering, locked: !hasScript },
-                { id: 'inspector', label: tabLabelMap.inspector, locked: !hasScript },
+                { id: 'director', label: tabLabelMap.director, locked: false },
+                { id: 'script', label: tabLabelMap.script, locked: false },
+                { id: 'visuals', label: tabLabelMap.visuals, locked: false },
+                { id: 'motion', label: tabLabelMap.motion, locked: false },
+                { id: 'mastering', label: tabLabelMap.mastering, locked: false },
+                { id: 'inspector', label: tabLabelMap.inspector, locked: false },
               ].map((tab) => {
                 const isActive = activeTab === tab.id;
                 const tabStyle = getTabStyleClass(tab.id, tab.locked, isActive);

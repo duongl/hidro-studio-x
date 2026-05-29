@@ -10,11 +10,16 @@ export type ProjectType =
 
 export type SocialPlatform =
   | 'TikTok'
+  | 'Shopee Video'
+  | 'Facebook'
+  | 'Instagram'
+  | 'YouTube Shorts'
+  | 'YouTube Longform'
+  | 'Multi Platform'
   | 'Shopee'
   | 'Lazada'
   | 'Amazon'
-  | 'YouTube'
-  | 'Facebook';
+  | 'YouTube';
 
 export interface DNAModuleItem {
   id: string;
@@ -140,6 +145,7 @@ export interface SceneCard {
 export interface Project {
   id: string;
   name: string;
+  description?: string;
   type: ProjectType;
   platform: SocialPlatform;
   sceneCount: number;
@@ -147,6 +153,7 @@ export interface Project {
   imageModel?: ImageModel;
   videoModel?: VideoModel;
   createdAt: string;
+  lastModified: string;
   assets: ProjectAssets;
   dnaLock?: DNALock;
   directorInsight?: AIDirectorInsight;
@@ -161,6 +168,13 @@ export interface Project {
   videoLengthMode?: 'Auto' | '15s' | '30s' | '45s' | '60s' | '90s' | '120s' | 'Custom';
   customVideoLength?: number;
   targetLanguage?: 'Vietnamese' | 'English';
+  isFavorite?: boolean;
+  isArchived?: boolean;
+  isDeleted?: boolean;
+  deletedAt?: string;
+  status?: 'Draft' | 'Analyzing' | 'Writing' | 'Generating Images' | 'Generating Videos' | 'Completed' | 'Archived';
+  versionHistory?: { id: string; name: string; timestamp: string; data: string }[];
+  thumbnailUrl?: string;
 }
 
 export type ImageModel =

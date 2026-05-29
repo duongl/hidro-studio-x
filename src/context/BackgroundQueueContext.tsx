@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { Project, SceneCard, DNALock, AIDirectorInsight, ProjectAssets, normalizeAssets } from '../types';
 import { generateSyntheticCinematicSvg } from '../utils';
+import { useProjects } from './ProjectContext';
 
 export interface BackgroundJob {
   id: string;
@@ -173,9 +174,13 @@ export function BackgroundQueueProvider({ children }: { children: React.ReactNod
 
   const runningJobsRef = useRef<Set<string>>(new Set());
   const latestProjectRef = useRef<Project | null>(activeProject);
+  const { updateProject } = useProjects();
 
   useEffect(() => {
     latestProjectRef.current = activeProject;
+    if (activeProject) {
+      updateProject(activeProject);
+    }
   }, [activeProject]);
 
   // Sync project to storage on change

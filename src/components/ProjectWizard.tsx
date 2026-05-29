@@ -7,6 +7,7 @@ interface ProjectWizardProps {
   onProjectCreated: (project: Project) => void;
   activeProject: Project | null;
   onClearActive: () => void;
+  forceOpen?: boolean;
 }
 
 const PROJECT_TYPES: ProjectType[] = [
@@ -95,9 +96,9 @@ const VIDEO_MODELS_DATA = [
   },
 ] as const;
 
-export default function ProjectWizard({ onProjectCreated, activeProject, onClearActive }: ProjectWizardProps) {
+export default function ProjectWizard({ onProjectCreated, activeProject, onClearActive, forceOpen }: ProjectWizardProps) {
   const { t } = useLanguage();
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(forceOpen || false);
   const [step, setStep] = useState(1);
   const [name, setName] = useState('');
   const [type, setType] = useState<ProjectType>('Affiliate Marketing');
@@ -163,6 +164,7 @@ export default function ProjectWizard({ onProjectCreated, activeProject, onClear
       imageModel,
       videoModel,
       createdAt: new Date().toISOString(),
+      lastModified: new Date().toISOString(),
       scriptInputMode: 'ai',
       assets: {
         character: { prompt: '', items: [] },
