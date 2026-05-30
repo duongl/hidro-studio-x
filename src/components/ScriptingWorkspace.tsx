@@ -20,7 +20,11 @@ import {
   Zap, 
   Clock, 
   FileText,
-  Sliders
+  Sliders,
+  Eye,
+  Edit,
+  RefreshCw,
+  Download
 } from 'lucide-react';
 import { useLanguage } from '../utils/i18n';
 import { useBackgroundQueue } from '../context/BackgroundQueueContext';
@@ -36,6 +40,7 @@ export default function ScriptingWorkspace({ project, onUpdateScenes, onAdvanceS
   const { lang, t } = useLanguage();
   const { jobs, triggerScriptGeneration } = useBackgroundQueue();
   const [tab, setTab] = useState<'ai' | 'paste'>('ai');
+  const [compiledThisSession, setCompiledThisSession] = useState(false);
 
   // TAB 1: AI Generate fields
   const [productIdea, setProductIdea] = useState('');
@@ -47,9 +52,20 @@ export default function ScriptingWorkspace({ project, onUpdateScenes, onAdvanceS
   // TAB 2: Paste script input
   const [rawText, setRawText] = useState('');
 
+  // Modal states & bulk edits
+  const [isViewScriptOpen, setIsViewScriptOpen] = useState(false);
+  const [isEditScriptOpen, setIsEditScriptOpen] = useState(false);
+  const [bulkEditScenes, setBulkEditScenes] = useState<SceneCard[]>([]);
+
   // SCRIPT CARDS STATE
   const [activeScenes, setActiveScenes] = useState<SceneCard[]>([]);
   const [selectedSceneIndex, setSelectedSceneIndex] = useState<number>(0);
+
+  useEffect(() => {
+    if (isEditScriptOpen) {
+      setBulkEditScenes(JSON.parse(JSON.stringify(activeScenes)));
+    }
+  }, [isEditScriptOpen, activeScenes]);
 
   // Connection to background job state
   const activeJob = jobs.find(j => j.type === 'script_generation' && (j.status === 'running' || j.status === 'pending'));
@@ -87,6 +103,7 @@ export default function ScriptingWorkspace({ project, onUpdateScenes, onAdvanceS
   // AI Generation & Deconstructor API handler
   const handleCompileScript = () => {
     let aggregatedFocusPrompt = '';
+    setCompiledThisSession(true);
 
     if (tab === 'ai') {
       aggregatedFocusPrompt = `
@@ -113,10 +130,11 @@ export default function ScriptingWorkspace({ project, onUpdateScenes, onAdvanceS
 
   // Listen to background compilation completion
   useEffect(() => {
-    if (project.scriptingCompleted) {
+    if (project.scriptingCompleted && compiledThisSession) {
       onScriptingCompleted();
+      setCompiledThisSession(false);
     }
-  }, [project.scriptingCompleted]);
+  }, [project.scriptingCompleted, compiledThisSession]);
 
   // SCENE EVENT HANDLERS (Realtime saving to Project context)
   const saveScenesToProject = (updated: SceneCard[]) => {
@@ -291,14 +309,100 @@ export default function ScriptingWorkspace({ project, onUpdateScenes, onAdvanceS
         </div>
 
         {isScriptLoaded && (
-          <button
-            onClick={onAdvanceStep}
-            className="px-6 py-2.5 rounded-xl bg-[#4DA6FF] hover:bg-[#4DA6FF]/90 text-black font-mono font-bold text-xs tracking-wider transition-all flex items-center gap-2 cursor-pointer hover:scale-[1.02] active:scale-98"
-            id="btn_scripting_advance"
-          >
-            {lang === 'en' ? 'PROCEED TO VISUAL ENGINE' : 'TIẾN HÀNH THIẾT KẾ ỐNG KÍNH'}
-            <ArrowRight className="w-4 h-4 text-black" />
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            {/* View Script */}
+            <button
+              type="button"
+              onClick={() => setIsViewScriptOpen(true)}
+              className="px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/5 hover:bg-white/[0.08] text-white font-mono font-bold text-xs uppercase flex items-center gap-1.5 transition-all cursor-pointer"
+              title={lang === 'en' ? 'View Dialogue script' : 'Xem kịch bản lời thoại'}
+            >
+              <Eye className="w-3.5 h-3.5 text-[#66FF99]" />
+              <span>{lang === 'en' ? 'View Script' : 'Xem Kịch Bản'}</span>
+            </button>
+
+            {/* Edit Script */}
+            <button
+              type="button"
+              onClick={() => setIsEditScriptOpen(true)}
+              className="px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/5 hover:bg-white/[0.08] text-white font-mono font-bold text-xs uppercase flex items-center gap-1.5 transition-all cursor-pointer"
+              title={lang === 'en' ? 'Edit Script' : 'Sửa Kịch Bản'}
+            >
+              <Edit className="w-3.5 h-3.5 text-[#4DA6FF]" />
+              <span>{lang === 'en' ? 'Edit Script' : 'Sửa Sơ Bộ'}</span>
+            </button>
+
+            {/* Regenerate Script */}
+            <button
+              type="button"
+              onClick={handleCompileScript}
+              className="px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/5 hover:bg-white/[0.08] text-white font-mono font-bold text-xs uppercase flex items-center gap-1.5 transition-all cursor-pointer"
+              title={lang === 'en' ? 'Regenerate script via model' : 'Tạo lại kịch bản'}
+            >
+              <RefreshCw className="w-3.5 h-3.5 text-yellow-500" />
+              <span>{lang === 'en' ? 'Regenerate' : 'Tạo Lại'}</span>
+            </button>
+
+            {/* Export TXT */}
+            <button
+              type="button"
+              onClick={() => {
+                let content = `PROJECT STORYBOARD SCREENPLAY: ${project.name}\n\n`;
+                activeScenes.forEach(s => {
+                  content += `SCENE ${s.sceneNumber}\n`;
+                  content += `NARRATION/VOICEOVER:\n${s.narration}\n\n`;
+                  content += `ACTION:\n${s.action}\n\n`;
+                  content += `VISUAL DIRECTION:\n${s.visualDirection}\n\n`;
+                  content += `IMAGE PROMPT:\n${s.imagePrompt}\n\n`;
+                  content += `VIDEO PROMPT:\n${s.videoPrompt}\n\n`;
+                  content += `\n---------------------------------------\n\n`;
+                });
+                const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${project.name.toLowerCase().replace(/\s+/g, '_')}_storyboard.txt`;
+                a.click();
+                URL.revokeObjectURL(url);
+              }}
+              className="px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/5 hover:bg-white/[0.08] text-white font-mono font-bold text-xs uppercase flex items-center gap-1.5 transition-all cursor-pointer"
+              title={lang === 'en' ? 'Export as TXT' : 'Xuất file TXT'}
+            >
+              <Download className="w-3.5 h-3.5 text-blue-400" />
+              <span>TXT</span>
+            </button>
+
+            {/* Export JSON */}
+            <button
+              type="button"
+              onClick={() => {
+                const content = JSON.stringify(activeScenes, null, 2);
+                const blob = new Blob([content], { type: 'application/json;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${project.name.toLowerCase().replace(/\s+/g, '_')}_storyboard.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+              }}
+              className="px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/5 hover:bg-white/[0.08] text-white font-mono font-bold text-xs uppercase flex items-center gap-1.5 transition-all cursor-pointer"
+              title={lang === 'en' ? 'Export as JSON' : 'Xuất file JSON'}
+            >
+              <Download className="w-3.5 h-3.5 text-purple-400" />
+              <span>JSON</span>
+            </button>
+
+            {/* Proceed */}
+            <button
+              type="button"
+              onClick={onAdvanceStep}
+              className="px-5 py-2.5 rounded-xl bg-[#4DA6FF] hover:bg-[#4DA6FF]/90 text-black font-mono font-bold text-xs tracking-wider transition-all flex items-center gap-2 cursor-pointer hover:scale-[1.02] active:scale-98"
+              id="btn_scripting_advance"
+            >
+              {lang === 'en' ? 'PROCEED TO VISUAL' : 'XỬ LÝ HÌNH ẢNH'}
+              <ArrowRight className="w-4 h-4 text-black" />
+            </button>
+          </div>
         )}
       </div>
 
@@ -803,6 +907,197 @@ export default function ScriptingWorkspace({ project, onUpdateScenes, onAdvanceS
             <div>&gt; Loading Steps DNA constants...</div>
             <div>&gt; Analysing Audience Strategy and marketing angle...</div>
             <div className="text-[#66FF99]">&gt; Injecting locks to Scene cards structure...</div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================================================== */}
+      {/* VIEW SCRIPT MODAL                                    */}
+      {/* ==================================================== */}
+      {isViewScriptOpen && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-[#0E0E0E] border border-white/10 rounded-3xl max-w-3xl w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-fade-in">
+            {/* Modal Header */}
+            <div className="p-5 border-b border-white/5 flex justify-between items-center bg-black/40">
+              <h3 className="text-sm font-mono font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                <BookOpen className="w-4 h-4 text-[#66FF99]" />
+                {lang === 'en' ? 'Full Screenplay Viewer' : 'Trình Duyệt Kịch Bản Chi Tiết'}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsViewScriptOpen(false)}
+                className="text-gray-400 hover:text-white px-3 py-1 rounded bg-white/[0.04] border border-white/5 text-xs font-mono"
+              >
+                {lang === 'en' ? 'CLOSE' : 'Hủy'}
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 overflow-y-auto space-y-6 flex-1 text-xs">
+              {activeScenes.map((s) => (
+                <div key={s.id} className="p-4 rounded-2xl bg-white/[0.02] border border-white/5 space-y-3">
+                  <div className="flex justify-between items-center border-b border-white/5 pb-1.5">
+                    <span className="font-mono font-black text-[#66FF99]">SCENE {s.sceneNumber}</span>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-mono text-gray-500 uppercase block">🗣 {lang === 'en' ? 'Narration / Voiceover' : 'Lời thoại / Thuyết minh'}</span>
+                      <p className="text-white bg-black/30 p-2.5 rounded-lg border border-white/5 select-text whitespace-pre-wrap leading-relaxed font-sans">{s.narration}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-mono text-gray-500 uppercase block">🎬 {lang === 'en' ? 'Action choreography' : 'Hành động phân cảnh'}</span>
+                      <p className="text-gray-300 bg-black/30 p-2.5 rounded-lg border border-white/5 select-text whitespace-pre-wrap leading-relaxed font-sans">{s.action}</p>
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-mono text-gray-500 uppercase block">🎥 {lang === 'en' ? 'Camera angle & Visual design' : 'Góc quay & Phong cách hiển thị'}</span>
+                    <p className="text-gray-400 bg-black/30 p-2.5 rounded-lg border border-white/5 select-text text-[10.5px] whitespace-pre-wrap font-sans">{s.visualDirection}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-white/5 bg-black/40 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  let formatted = '';
+                  activeScenes.forEach(s => {
+                    formatted += `Scene ${s.sceneNumber}\n`;
+                    formatted += `Narration: ${s.narration}\n`;
+                    formatted += `Action: ${s.action}\n\n`;
+                  });
+                  navigator.clipboard.writeText(formatted);
+                  alert(lang === 'en' ? 'Copied script to clipboard!' : 'Đã sao chép kịch bản vào bộ nhớ tạm!');
+                }}
+                className="px-4 py-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/5 text-white font-mono font-bold text-xs uppercase cursor-pointer"
+              >
+                {lang === 'en' ? 'Copy All' : 'Sao chép hết'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsViewScriptOpen(false)}
+                className="px-5 py-2 rounded-xl bg-[#66FF99] text-black font-mono font-bold text-xs uppercase cursor-pointer"
+              >
+                {lang === 'en' ? 'Done' : 'Xong'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================================================== */}
+      {/* EDIT SCRIPT MODAL                                    */}
+      {/* ==================================================== */}
+      {isEditScriptOpen && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-[#0E0E0E] border border-white/10 rounded-3xl max-w-4xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-fade-in animate-duration-200">
+            {/* Modal Header */}
+            <div className="p-5 border-b border-white/5 flex justify-between items-center bg-black/40">
+              <h3 className="text-sm font-mono font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                <Edit className="w-4 h-4 text-[#4DA6FF]" />
+                {lang === 'en' ? 'Bulk Screenplay Editor' : 'Biên Tập Kịch Bản Nhanh'}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsEditScriptOpen(false)}
+                className="text-gray-400 hover:text-white px-3 py-1 rounded bg-white/[0.04] border border-white/5 text-xs font-mono"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 overflow-y-auto space-y-6 flex-1 text-xs">
+              {bulkEditScenes.map((s, idx) => (
+                <div key={s.id} className="p-4 rounded-2xl bg-white/[0.02] border border-white/5 space-y-4">
+                  <div className="flex justify-between items-center border-b border-white/5 pb-1.5">
+                    <span className="font-mono font-black text-[#4DA6FF]">SCENE {s.sceneNumber}</span>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Dialogue */}
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-mono text-gray-400 uppercase tracking-wider block flex items-center gap-1">
+                        🗣 {lang === 'en' ? 'Narration / Voiceover' : 'Lời thoại / Thuyết minh'}
+                      </label>
+                      <textarea
+                        value={s.narration}
+                        onChange={(e) => {
+                          const updated = [...bulkEditScenes];
+                          updated[idx].narration = e.target.value;
+                          setBulkEditScenes(updated);
+                        }}
+                        rows={2}
+                        className="w-full p-2.5 bg-black border border-white/10 rounded-xl text-xs text-white focus:border-[#4DA6FF]/40 outline-none resize-none font-sans"
+                      />
+                    </div>
+                    {/* Action */}
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-mono text-gray-400 uppercase tracking-wider block flex items-center gap-1">
+                        🎬 {lang === 'en' ? 'Action choreography' : 'Hành động phân cảnh'}
+                      </label>
+                      <textarea
+                        value={s.action}
+                        onChange={(e) => {
+                          const updated = [...bulkEditScenes];
+                          updated[idx].action = e.target.value;
+                          setBulkEditScenes(updated);
+                        }}
+                        rows={2}
+                        className="w-full p-2.5 bg-black border border-white/10 rounded-xl text-xs text-white focus:border-[#4DA6FF]/40 outline-none resize-none font-sans"
+                      />
+                    </div>
+                  </div>
+                  {/* Visual Direction */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-mono text-gray-400 uppercase tracking-wider block flex items-center gap-1">
+                      🎥 {lang === 'en' ? 'Camera angle & Visual design' : 'Góc quay & Phong cách hiển thị'}
+                    </label>
+                    <textarea
+                      value={s.visualDirection || ''}
+                      onChange={(e) => {
+                        const updated = [...bulkEditScenes];
+                        updated[idx].visualDirection = e.target.value;
+                        setBulkEditScenes(updated);
+                      }}
+                      rows={1}
+                      className="w-full p-2.5 bg-black border border-white/10 rounded-xl text-xs text-white focus:border-[#4DA6FF]/40 outline-none resize-none font-sans"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-white/5 bg-black/40 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setIsEditScriptOpen(false)}
+                className="px-4 py-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/5 text-white font-mono font-bold text-xs uppercase cursor-pointer"
+              >
+                {lang === 'en' ? 'Cancel' : 'Hủy bỏ'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  // Save all and run injection wrappers
+                  const final = bulkEditScenes.map(sc => {
+                    const { imagePrompt, videoPrompt } = injectDNALocks(sc.narration, sc.action, sc.visualDirection || '');
+                    return {
+                      ...sc,
+                      imagePrompt,
+                      videoPrompt
+                    };
+                  });
+                  saveScenesToProject(final);
+                  setIsEditScriptOpen(false);
+                }}
+                className="px-5 py-2 rounded-xl bg-[#4DA6FF] text-black font-mono font-bold text-xs uppercase cursor-pointer"
+              >
+                {lang === 'en' ? 'Save Changes' : 'Lưu Thay Đổi'}
+              </button>
+            </div>
           </div>
         </div>
       )}

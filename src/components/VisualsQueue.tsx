@@ -97,6 +97,53 @@ export default function VisualsQueue({ project, onUpdateSceneSingle, onUpdateAll
     link.click();
   };
 
+  const exportCsv = () => {
+    const headers = ['Scene Number', 'Duration', 'Narration', 'Action', 'Style', 'Image Prompt', 'Video Prompt'];
+    const rows = project.scenes.map(s => [
+      s.sceneNumber,
+      s.duration || 8,
+      `"${(s.narration || '').replace(/"/g, '""')}"`,
+      `"${(s.action || '').replace(/"/g, '""')}"`,
+      `"${(s.visualDirection || '').replace(/"/g, '""')}"`,
+      `"${(s.imagePrompt || '').replace(/"/g, '""')}"`,
+      `"${(s.videoPrompt || '').replace(/"/g, '""')}"`
+    ]);
+    const csvContent = [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `${project.name.replace(/\s+/g, '_')}_master_sheet.csv`;
+    link.click();
+  };
+
+  const exportMarkdown = () => {
+    const content = `# ${project.name} - Cinematic Project Document\n\n` +
+      `**Category**: ${project.type}\n` +
+      `**Platform**: ${project.platform}\n` +
+      `**Target Duration**: ${project.targetDuration} seconds\n` +
+      `**Scenes**: ${project.scenes.length}\n\n` +
+      `## DNA locks & Brand Guidelines\n` +
+      `- **Character DNA**: ${project.dnaLock?.CHARACTER_DNA || 'N/A'}\n` +
+      `- **Product DNA**: ${project.dnaLock?.PRODUCT_DNA || 'N/A'}\n` +
+      `- **Background DNA**: ${project.dnaLock?.BACKGROUND_DNA || 'N/A'}\n` +
+      `- **Style DNA**: ${project.dnaLock?.STYLE_DNA || 'N/A'}\n\n` +
+      `## Storyboard Sequences\n\n` +
+      project.scenes.map(s => 
+        `### Scene ${s.sceneNumber} (${s.duration || 8}s)\n` +
+        `- **Voiceover/Narration**: *"${s.narration || ''}"*\n` +
+        `- **Action/Subject**: ${s.action || ''}\n` +
+        `- **Visual style directions**: ${s.visualDirection || ''}\n` +
+        `- **Injected Image Prompt**: \`${s.imagePrompt || ''}\`\n` +
+        `- **Injected Video Motion Prompt**: \`${s.videoPrompt || ''}\`\n`
+      ).join('\n---\n\n');
+    
+    const blob = new Blob([content], { type: 'text/markdown' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `${project.name.replace(/\s+/g, '_')}_storyboard.md`;
+    link.click();
+  };
+
   const downloadAllImages = () => {
     project.scenes.forEach((s) => {
       triggerImageDownload(s.imageUrl, s.sceneNumber);
@@ -182,6 +229,24 @@ export default function VisualsQueue({ project, onUpdateSceneSingle, onUpdateAll
             className="px-3.5 py-1.5 rounded-lg bg-white/[0.03] border border-white/5 hover:bg-white/[0.05] text-xs font-mono text-gray-300 hover:text-white transition-all flex items-center gap-2 cursor-pointer"
           >
             <FileText className="w-3.5 h-3.5" /> {t('exportTxtDraft')}
+          </button>
+
+          <button
+            onClick={exportCsv}
+            id="btn_export_csv"
+            className="px-3.5 py-1.5 rounded-lg bg-white/[0.03] border border-white/5 hover:border-[#66FF99]/20 hover:bg-white/[0.05] text-xs font-mono text-gray-300 hover:text-white transition-all flex items-center gap-2 cursor-pointer"
+            title="Export full scene master layout table to Excel/CSV"
+          >
+            <FileText className="w-3.5 h-3.5" /> CSV Sheet
+          </button>
+
+          <button
+            onClick={exportMarkdown}
+            id="btn_export_md"
+            className="px-3.5 py-1.5 rounded-lg bg-white/[0.03] border border-white/5 hover:border-[#4DA6FF]/20 hover:bg-white/[0.05] text-xs font-mono text-gray-300 hover:text-white transition-all flex items-center gap-2 cursor-pointer"
+            title="Export formatted Markdown Storyboard document"
+          >
+            <FileText className="w-3.5 h-3.5" /> Markdown Doc
           </button>
         </div>
       )}

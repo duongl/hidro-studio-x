@@ -14,6 +14,7 @@ interface AIDirectorProps {
 export default function AIDirector({ project, onUpdateDirectorData, onAdvanceStep, onDirectorCompleted }: AIDirectorProps) {
   const { t } = useLanguage();
   const { jobs, triggerDirectorAnalysis } = useBackgroundQueue();
+  const [analyzedThisSession, setAnalyzedThisSession] = useState(false);
 
   const activeJob = jobs.find(j => j.type === 'director_analysis' && (j.status === 'running' || j.status === 'pending'));
   const loading = !!activeJob;
@@ -30,16 +31,18 @@ export default function AIDirector({ project, onUpdateDirectorData, onAdvanceSte
   const statusText = getStatusText();
 
   const runDirectorAnalysis = () => {
+    setAnalyzedThisSession(true);
     triggerDirectorAnalysis();
   };
 
   const isLocked = !!project.dnaLock;
 
   useEffect(() => {
-    if (project.aiDirectorCompleted && !isLocked) {
+    if (project.aiDirectorCompleted && !isLocked && analyzedThisSession) {
       onDirectorCompleted();
+      setAnalyzedThisSession(false);
     }
-  }, [project.aiDirectorCompleted]);
+  }, [project.aiDirectorCompleted, analyzedThisSession]);
 
   return (
     <div className="space-y-8 animate-fade-in" id="ai_director_panel">

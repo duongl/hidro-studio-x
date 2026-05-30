@@ -154,6 +154,15 @@ export default function ProjectWizard({ onProjectCreated, activeProject, onClear
   const handleCreateProject = () => {
     if (!name.trim()) return;
 
+    const singleImageCost = imageModel === 'Imagen 4' ? 0.08 : 0.04;
+    const singleVideoCostPerSec = videoModel === 'Veo 3.1 Quality' ? 0.15 : (videoModel === 'Veo 3.1 Lite' ? 0.04 : 0.08);
+    const singleVoiceCostPerSec = 0.003; // Gemini TTS
+
+    const imageTotalCost = singleImageCost * sceneCount;
+    const videoTotalCost = singleVideoCostPerSec * duration;
+    const voiceTotalCost = singleVoiceCostPerSec * duration;
+    const grandTotalCost = parseFloat((imageTotalCost + videoTotalCost + voiceTotalCost).toFixed(2));
+
     const newProj: Project = {
       id: `proj-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
       name: name.trim(),
@@ -163,6 +172,9 @@ export default function ProjectWizard({ onProjectCreated, activeProject, onClear
       targetDuration: duration,
       imageModel,
       videoModel,
+      scriptModel: 'Gemini 2.5 Pro',
+      voiceModel: 'Gemini TTS',
+      workspaceMode: 'SOLO',
       createdAt: new Date().toISOString(),
       lastModified: new Date().toISOString(),
       scriptInputMode: 'ai',
@@ -178,6 +190,23 @@ export default function ProjectWizard({ onProjectCreated, activeProject, onClear
       scriptingCompleted: false,
       visualsCompleted: false,
       motionCompleted: false,
+      costCalculator: {
+        imageCost: parseFloat(imageTotalCost.toFixed(2)),
+        videoCost: parseFloat(videoTotalCost.toFixed(2)),
+        voiceCost: parseFloat(voiceTotalCost.toFixed(2)),
+        totalCost: grandTotalCost
+      },
+      dnaProfile: {
+        brandName: '',
+        videoType: 'Affiliate',
+        targetPlatform: platform as any,
+        gender: 'All',
+        ageGroup: '18-35',
+        country: 'Vietnam',
+        language: 'Vietnamese',
+        videoStyle: 'Commercial UGC',
+        targetDuration: duration
+      }
     };
 
     onProjectCreated(newProj);

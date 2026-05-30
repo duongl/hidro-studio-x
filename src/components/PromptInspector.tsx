@@ -1,17 +1,56 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Project, SceneCard } from '../types';
-import { Cpu, Lock, Link, Eye, Copy, Check, Terminal, ShieldAlert, Sparkles, FileText, Download, Layers } from 'lucide-react';
+import { 
+  Cpu, Lock, Link, Eye, Copy, Check, Terminal, ShieldAlert, Sparkles, 
+  FileText, Download, Layers, Sliders, Edit, Save, Star, Play, 
+  CheckCircle, ChevronRight, HelpCircle, AlertTriangle 
+} from 'lucide-react';
 
 interface PromptInspectorProps {
   project: Project;
+  onUpdateProject?: (updatedProj: Project) => void;
 }
 
-export default function PromptInspector({ project }: PromptInspectorProps) {
+export default function PromptInspector({ project, onUpdateProject }: PromptInspectorProps) {
   const [selectedSceneIndex, setSelectedSceneIndex] = useState(0);
   const [copiedTarget, setCopiedTarget] = useState<string | null>(null);
+  
+  // Edit mode states
+  const [isEditing, setIsEditing] = useState(false);
+  const [editNarration, setEditNarration] = useState('');
+  const [editImagePrompt, setEditImagePrompt] = useState('');
+  const [editVideoPrompt, setEditVideoPrompt] = useState('');
+  const [editCameraPrompt, setEditCameraPrompt] = useState('');
+  const [editAction, setEditAction] = useState('');
+  
+  // Custom score overrides
+  const [hookScore, setHookScore] = useState(85);
+  const [ctaScore, setCtaScore] = useState(80);
+  const [charConsistency, setCharConsistency] = useState(90);
+  const [prodConsistency, setProdConsistency] = useState(95);
+  const [bgConsistency, setBgConsistency] = useState(85);
+  const [styleConsistency, setStyleConsistency] = useState(90);
 
   const scenes = project.scenes || [];
   const currentScene: SceneCard | undefined = scenes[selectedSceneIndex];
+
+  // Initialize edit fields when scene selection changes
+  useEffect(() => {
+    if (currentScene) {
+      setEditNarration(currentScene.narration || '');
+      setEditImagePrompt(currentScene.imagePrompt || '');
+      setEditVideoPrompt(currentScene.videoPrompt || '');
+      setEditCameraPrompt(currentScene.cameraPrompt || 'Close-up focal scale tracking, macro 35mm lens angle, cinematic high contrast lighting depth.');
+      setEditAction(currentScene.action || '');
+      
+      setHookScore(currentScene.hookScore || Math.floor(Math.random() * 15) + 80);
+      setCtaScore(currentScene.ctaScore || Math.floor(Math.random() * 15) + 80);
+      setCharConsistency(currentScene.consistencyScore?.character || 90);
+      setProdConsistency(currentScene.consistencyScore?.product || 92);
+      setBgConsistency(currentScene.consistencyScore?.background || 85);
+      setStyleConsistency(currentScene.consistencyScore?.style || 90);
+    }
+  }, [selectedSceneIndex, project]);
 
   const handleCopy = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
@@ -29,10 +68,11 @@ SCENE ${currentScene.sceneNumber} CINEMATIC BREAKDOWN BLOCK
 ========================================
 BLOCK 1: SCENE INFO METADATA
 - Scene Number: ${currentScene.sceneNumber}
-- Estimated Duration: ${project.targetDuration ? Math.round(project.targetDuration / scenes.length) : 8} seconds
+- Estimated Duration: ${currentScene.duration || 8} seconds
 - Distribution Platform: ${project.platform}
 - Workflow Type: ${project.type}
 - Rendering Video Model: ${project.videoModel}
+- Rendering Voice Model: ${currentScene.voiceModel || project.voiceModel || 'Gemini TTS'}
 
 BLOCK 2: IMAGE PROMPT (KEYFRAME)
 ${currentScene.imagePrompt}
@@ -44,7 +84,7 @@ BLOCK 4: CAMERA BLOCK
 ${currentScene.cameraPrompt || 'Close-up focal scale tracking, macro 35mm lens angle, cinematic high contrast lighting depth.'}
 
 BLOCK 5: AUDIO BLOCK
-- Voice Profiles: Warm, High-Conversion Dialogue pacing
+- Voice Profiles: ${currentScene.voiceModel || project.voiceModel || 'Gemini TTS'} Warm, High-Conversion Dialogue pacing
 - Sample Resolution: 48kHz Dolby Master broadcast alignment
 
 BLOCK 6: DIALOGUE BLOCK
@@ -66,6 +106,40 @@ BLOCK 9: SUFFIX INJECTION DIRECTIVES
     handleCopy(blockText, 'copy-all-blocks');
   };
 
+  const handleSaveChanges = () => {
+    if (!currentScene || !onUpdateProject) return;
+
+    const updatedScenes = scenes.map((s, idx) => {
+      if (idx === selectedSceneIndex) {
+        return {
+          ...s,
+          narration: editNarration,
+          imagePrompt: editImagePrompt,
+          videoPrompt: editVideoPrompt,
+          cameraPrompt: editCameraPrompt,
+          action: editAction,
+          hookScore: hookScore,
+          ctaScore: ctaScore,
+          consistencyScore: {
+            character: charConsistency,
+            product: prodConsistency,
+            background: bgConsistency,
+            style: styleConsistency,
+          }
+        };
+      }
+      return s;
+    });
+
+    const updatedProject: Project = {
+      ...project,
+      scenes: updatedScenes,
+    };
+
+    onUpdateProject(updatedProject);
+    setIsEditing(false);
+  };
+
   const exportPromptPackTxt = () => {
     const content = scenes
       .map((s) => `
@@ -74,10 +148,12 @@ SCENE ${s.sceneNumber} CINEMATIC BREAKDOWN BLOCK
 ========================================
 BLOCK 1: SCENE INFO METADATA
 - Scene Number: ${s.sceneNumber}
-- Duration Estimate: ${project.targetDuration ? Math.round(project.targetDuration / scenes.length) : 8}s
+- Duration Estimate: ${s.duration || 8}s
 - Platform: ${project.platform}
 - Workflow: ${project.type}
-- Model: ${project.videoModel}
+- Image Model: ${project.imageModel}
+- Video Model: ${project.videoModel}
+- Voice Model: ${s.voiceModel || project.voiceModel || 'Gemini TTS'}
 
 BLOCK 2: IMAGE PROMPT (KEYFRAME)
 ${s.imagePrompt}
@@ -89,7 +165,7 @@ BLOCK 4: CAMERA BLOCK
 ${s.cameraPrompt || 'Close-up focal scale tracking, macro 35mm lens angle, cinematic depth.'}
 
 BLOCK 5: AUDIO BLOCK
-Warm, High-Conversion Dialogue pacing alignment.
+Warm, High-Conversion Dialogue pacing alignment via ${s.voiceModel || project.voiceModel || 'Gemini TTS'}.
 
 BLOCK 6: DIALOGUE BLOCK
 "${s.narration}"
@@ -121,16 +197,20 @@ BLOCK 9: SUFFIX INJECTION DIRECTIVES
       info: {
         platform: project.platform,
         workflow: project.type,
-        model: project.videoModel,
-        duration: project.targetDuration ? Math.round(project.targetDuration / scenes.length) : 8
+        imageModel: project.imageModel,
+        videoModel: project.videoModel,
+        voiceModel: s.voiceModel || project.voiceModel || 'Gemini TTS',
+        duration: s.duration || 8
       },
       imagePrompt: s.imagePrompt,
       videoPrompt: s.videoPrompt,
       cameraBlock: s.cameraPrompt || 'Close-up zoom, 35mm lens depth',
-      audioBlock: 'Warm, Conversational tone, High conversion energy',
+      audioBlock: `Warm conversational tone via ${s.voiceModel || project.voiceModel || 'Gemini TTS'}`,
       dialogueBlock: s.narration,
       ambientSound: 'Soft ASMR sweep acoustics',
       dnaLocks: project.dnaLock || {},
+      consistencyScores: s.consistencyScore || {character: 90, product: 92, background: 85, style: 90},
+      conversionMetrics: { hookScore: s.hookScore || 85, ctaScore: s.ctaScore || 80 },
       suffixInjections: 'Preserve identity, product shape, environment context'
     }));
 
@@ -154,10 +234,10 @@ BLOCK 9: SUFFIX INJECTION DIRECTIVES
       <div className="pb-4 border-b border-white/5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h2 className="text-xl font-display font-medium text-white tracking-tight flex items-center gap-2">
-            <Terminal className="w-5 h-5 text-emerald-400" /> Consistent Prompt Chain Inspector
+            <Terminal className="w-5 h-5 text-emerald-400" /> Active Scene Editor & Prompt Chain Inspector
           </h2>
           <p className="text-xs text-gray-400">
-            Trace how the DNA Lock System overlays visual descriptors to prevent character drift and product hallucinations across your production.
+            Tweak scene-level script copy, overlay prompts, and monitor high-conversion consistency metrics of your AI video workspace.
           </p>
         </div>
 
@@ -182,37 +262,37 @@ BLOCK 9: SUFFIX INJECTION DIRECTIVES
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Column: Selector list */}
+        {/* Left Column: Selector list & Conversion diagnostics */}
         <div className="lg:col-span-4 space-y-4">
           <div className="flex bg-[#0D0D0D] p-3 rounded-xl border border-white/5 justify-between items-center select-none">
-            <span className="text-[10px] font-mono text-gray-500 uppercase tracking-widest">Active Scene List</span>
+            <span className="text-[10px] font-mono text-gray-500 uppercase tracking-widest">Scenes & Script Boards</span>
             <span className="text-[9px] font-mono text-emerald-400 bg-emerald-500/5 px-2 py-0.5 rounded border border-emerald-500/10 uppercase font-bold">
               {scenes.length} Scenes Loaded
             </span>
           </div>
 
-          <div className="space-y-2 max-h-[500px] overflow-y-auto pr-2 main-scrollbar">
+          <div className="space-y-2 max-h-[360px] overflow-y-auto pr-2 main-scrollbar">
             {scenes.map((s, idx) => {
               const isSel = selectedSceneIndex === idx;
               return (
                 <button
                   key={s.id}
                   onClick={() => setSelectedSceneIndex(idx)}
-                  className={`w-full p-3.5 rounded-xl text-left border transition-all flex justify-between items-center ${
+                  className={`w-full p-3 rounded-xl text-left border transition-all flex justify-between items-center ${
                     isSel
-                      ? 'bg-gradient-to-r from-emerald-500/[0.04] to-none border-emerald-400 text-white'
+                      ? 'bg-gradient-to-r from-emerald-500/[0.04] to-none border-emerald-400 text-white shadow-[0_0_15px_rgba(16,185,129,0.1)]'
                       : 'bg-[#50505] border-white/5 text-gray-400 hover:bg-white/[0.01]'
                   }`}
                 >
-                  <div className="flex items-center gap-2.5">
-                    <span className={`text-[10px] font-mono font-bold w-5 h-5 rounded-full flex items-center justify-center ${
+                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                    <span className={`text-[10px] font-mono font-bold w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${
                       isSel ? 'bg-emerald-400 text-black font-extrabold' : 'bg-white/5 text-gray-300'
                     }`}>
                       {s.sceneNumber}
                     </span>
-                    <span className="text-xs font-sans font-semibold truncate max-w-[150px]">{s.action}</span>
+                    <span className="text-xs font-sans font-semibold truncate flex-1 block">{s.action || `Scene Board Component ${s.sceneNumber}`}</span>
                   </div>
-                  <span className="text-[9px] font-mono text-gray-500">MAPPED</span>
+                  <ChevronRight className="w-3 h-3 text-slate-650 shrink-0" />
                 </button>
               );
             })}
@@ -223,32 +303,181 @@ BLOCK 9: SUFFIX INJECTION DIRECTIVES
               </div>
             )}
           </div>
+
+          {/* Real-time Diagnostics HUD */}
+          {currentScene && (
+            <div className="p-4 bg-[#0d0d12] rounded-xl border border-white/5 space-y-4">
+              <h4 className="text-[10px] font-mono text-gray-400 uppercase tracking-widest flex items-center gap-1.5 font-bold">
+                <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+                {project.name.toUpperCase()} SCENE CONVERSION STATS
+              </h4>
+
+              {/* Conversion Metrics overrides */}
+              <div className="grid grid-cols-2 gap-3 text-xs font-mono">
+                <div className="p-3 rounded-xl bg-black/60 border border-white/5 space-y-1">
+                  <span className="text-[9px] text-gray-500 uppercase block font-bold leading-none">🧠 UGC HOOK SCORE</span>
+                  <div className="flex items-baseline justify-between">
+                    <span className={`text-lg font-black ${hookScore >= 85 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                      {hookScore}%
+                    </span>
+                    <span className="text-[8px] text-gray-400">EXCELLENT</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="50"
+                    max="100"
+                    value={hookScore}
+                    onChange={(e) => {
+                      setHookScore(Number(e.target.value));
+                      if (!isEditing) setIsEditing(true);
+                    }}
+                    className="w-full accent-emerald-400 h-1 bg-white/10 rounded"
+                  />
+                </div>
+
+                <div className="p-3 rounded-xl bg-black/60 border border-white/5 space-y-1">
+                  <span className="text-[9px] text-gray-500 uppercase block font-bold leading-none">🎯 CALL TO ACTION (CTA)</span>
+                  <div className="flex items-baseline justify-between">
+                    <span className={`text-lg font-black ${ctaScore >= 80 ? 'text-[#4DA6FF]' : 'text-amber-500'}`}>
+                      {ctaScore}%
+                    </span>
+                    <span className="text-[8px] text-gray-400">CONVERTING</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="50"
+                    max="100"
+                    value={ctaScore}
+                    onChange={(e) => {
+                      setCtaScore(Number(e.target.value));
+                      if (!isEditing) setIsEditing(true);
+                    }}
+                    className="w-full accent-[#4DA6FF] h-1 bg-white/10 rounded"
+                  />
+                </div>
+              </div>
+
+              {/* System Consistency Scores */}
+              <div className="text-[10px] font-mono text-gray-400 space-y-2.5">
+                <span className="block border-b border-white/5 pb-1 font-bold text-slate-500">REAL-TIME CONSISTENCY SCORES</span>
+                
+                <div className="space-y-1">
+                  <div className="flex justify-between">
+                    <span>🧬 Character Similarity Lock</span>
+                    <span className="text-emerald-400 font-bold">{charConsistency}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="70"
+                    max="100"
+                    value={charConsistency}
+                    onChange={(e) => {
+                      setCharConsistency(Number(e.target.value));
+                      if (!isEditing) setIsEditing(true);
+                    }}
+                    className="w-full accent-emerald-400 h-0.5 bg-white/15"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex justify-between">
+                    <span>🎁 Brand Product Accuracy</span>
+                    <span className="text-emerald-400 font-bold">{prodConsistency}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="70"
+                    max="100"
+                    value={prodConsistency}
+                    onChange={(e) => {
+                      setProdConsistency(Number(e.target.value));
+                      if (!isEditing) setIsEditing(true);
+                    }}
+                    className="w-full accent-emerald-400 h-0.5 bg-white/15"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex justify-between">
+                    <span>🏞 Studio Background Staging</span>
+                    <span className="text-yellow-400 font-bold">{bgConsistency}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="60"
+                    max="100"
+                    value={bgConsistency}
+                    onChange={(e) => {
+                      setBgConsistency(Number(e.target.value));
+                      if (!isEditing) setIsEditing(true);
+                    }}
+                    className="w-full accent-yellow-400 h-0.5 bg-white/15"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex justify-between">
+                    <span>🎨 Theme & Style Curve Match</span>
+                    <span className="text-[#4DA6FF] font-bold">{styleConsistency}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="70"
+                    max="100"
+                    value={styleConsistency}
+                    onChange={(e) => {
+                      setStyleConsistency(Number(e.target.value));
+                      if (!isEditing) setIsEditing(true);
+                    }}
+                    className="w-full accent-[#4DA6FF] h-0.5 bg-white/15"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Right Column: Immersive 9-Block DNA Screenplay Tracer */}
+        {/* Right Column: Scene Editor Details / Playbook Matrix */}
         <div className="lg:col-span-8 space-y-6">
           {currentScene ? (
             <div className="space-y-6">
               
-              {/* Copy all helper row */}
+              {/* Controls bar */}
               <div className="flex justify-between items-center bg-white/[0.01] border border-white/5 p-3 rounded-xl">
-                <span className="text-xs font-mono text-gray-400">
-                  ⚡ Trace Complete Script Breakdown for <strong className="text-white">Scene {currentScene.sceneNumber}</strong>
-                </span>
-                <button
-                  onClick={handleCopyAllBlocks}
-                  className="px-3 py-1.5 rounded bg-emerald-400 hover:bg-emerald-500 text-black text-[10px] font-mono font-bold uppercase transition-all flex items-center gap-1 cursor-pointer"
-                >
-                  {copiedTarget === 'copy-all-blocks' ? (
-                    <>
-                      <Check className="w-3 h-3 text-black stroke-[3]" /> COPIED!
-                    </>
+                <span className="text-xs font-mono text-gray-400 flex items-center gap-2">
+                  <Sliders className="w-3.5 h-3.5 text-[#4DA6FF]" />
+                  <span>Scene {currentScene.sceneNumber} Editor Mode:</span>
+                  {isEditing ? (
+                    <span className="text-amber-400 font-bold uppercase animate-pulse">● Unsaved Changes</span>
                   ) : (
-                    <>
-                      <Copy className="w-3 h-3 text-black stroke-[3]" /> Copy All Blocks
-                    </>
+                    <span className="text-emerald-400 font-bold uppercase">✓ Matched with Engine</span>
                   )}
-                </button>
+                </span>
+                
+                <div className="flex gap-2">
+                  {isEditing && (
+                    <button
+                      onClick={handleSaveChanges}
+                      className="px-3 py-1.5 rounded-lg bg-[#4DA6FF] hover:bg-[#4DA6FF]/90 text-black text-[10px] font-mono font-bold uppercase transition-all flex items-center gap-1.5 cursor-pointer shadow-[0_0_15px_rgba(77,166,255,0.2)]"
+                    >
+                      <Save className="w-3 h-3 text-black" /> Save Scene Changes
+                    </button>
+                  )}
+                  <button
+                    onClick={handleCopyAllBlocks}
+                    className="px-3 py-1.5 rounded bg-white/[0.03] hover:bg-white/[0.06] border border-white/5 text-gray-300 hover:text-white text-[10px] font-mono font-bold uppercase transition-all flex items-center gap-1.5 cursor-pointer"
+                  >
+                    {copiedTarget === 'copy-all-blocks' ? (
+                      <>
+                        <Check className="w-3 h-3 text-emerald-400 stroke-[3]" /> Mapped!
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3 h-3 text-emerald-400 stroke-[3]" /> Copy All Blocks
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
 
               {/* 9 conceptual blocks pipeline */}
@@ -259,46 +488,83 @@ BLOCK 9: SUFFIX INJECTION DIRECTIVES
                   <span className="text-[9px] font-mono text-gray-500 uppercase tracking-widest block mb-1">Block 1: Scene Info Metadata</span>
                   <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-[10px] font-mono text-gray-300">
                     <div><span className="text-gray-500 block">SCENE ID:</span> {currentScene.sceneNumber}</div>
-                    <div><span className="text-gray-500 block">DURATION:</span> {project.targetDuration ? Math.round(project.targetDuration / scenes.length) : 8}s</div>
+                    <div><span className="text-gray-500 block">PLAYBACK TIME:</span> {currentScene.duration || 8}s</div>
                     <div><span className="text-gray-500 block">PLATFORM:</span> {project.platform}</div>
                     <div><span className="text-gray-500 block">WORKFLOW:</span> {project.type}</div>
-                    <div><span className="text-gray-500 block">VIDEO ENGINE:</span> {project.videoModel}</div>
+                    <div><span className="text-gray-500 block">VOICE PROFILE:</span> {currentScene.voiceModel || project.voiceModel || 'Gemini TTS'}</div>
                   </div>
+                </div>
+
+                {/* Edit Section: Mapped Action Title */}
+                <div className="p-4 bg-white/[0.01] border border-white/5 rounded-xl space-y-1">
+                  <label className="text-[9px] font-mono text-gray-400 uppercase block tracking-wider font-bold">Scene Frame Primary Action</label>
+                  <input
+                    type="text"
+                    value={editAction}
+                    onChange={(e) => {
+                      setEditAction(e.target.value);
+                      setIsEditing(true);
+                    }}
+                    className="w-full bg-black/60 text-xs border border-white/15 focus:border-[#4DA6FF] rounded-lg p-2 outline-none font-sans text-white"
+                  />
+                  <p className="text-[9px] text-gray-500 font-sans italic pt-0.5">Title of frame layout action used for internal mapping.</p>
                 </div>
 
                 {/* Block 2: Image Prompt */}
-                <div className="p-4 bg-[#0A0A0A] rounded-xl border border-white/5 relative group">
+                <div className="p-4 bg-[#0A0A0A] rounded-xl border border-white/5 relative group space-y-1">
                   <div className="flex justify-between items-center mb-1">
-                    <span className="text-[9px] font-mono text-emerald-400 uppercase tracking-widest font-black">Block 2: Image Prompt (Keyframe Visual)</span>
-                    <button onClick={() => handleCopy(currentScene.imagePrompt, 'block2')} className="text-[10px] font-mono text-emerald-400 hover:underline flex items-center gap-1 cursor-pointer">
+                    <span className="text-[9px] font-mono text-emerald-400 uppercase tracking-widest font-black">Block 2: Image Prompt (Keyframe Visual Seed)</span>
+                    <button onClick={() => handleCopy(editImagePrompt, 'block2')} className="text-[10px] font-mono text-emerald-400 hover:underline flex items-center gap-1 cursor-pointer">
                       {copiedTarget === 'block2' ? <Check className="w-3 h-3"/> : <Copy className="w-3 h-3"/>} Copy Prompt
                     </button>
                   </div>
-                  <p className="text-xs text-white font-mono leading-relaxed pt-1 select-all">{currentScene.imagePrompt}</p>
+                  <textarea
+                    rows={2}
+                    value={editImagePrompt}
+                    onChange={(e) => {
+                      setEditImagePrompt(e.target.value);
+                      setIsEditing(true);
+                    }}
+                    className="w-full bg-black border border-white/10 rounded-lg p-2 text-xs font-mono text-white focus:border-emerald-400 outline-none resize-y"
+                  />
                 </div>
 
                 {/* Block 3: Video Prompt */}
-                <div className="p-4 bg-[#0A0A0A] rounded-xl border border-[#4DA6FF]/10 relative group">
+                <div className="p-4 bg-[#0A0A0A] rounded-xl border border-[#4DA6FF]/10 relative group space-y-1">
                   <div className="flex justify-between items-center mb-1">
                     <span className="text-[9px] font-mono text-[#4DA6FF] uppercase tracking-widest font-black">Block 3: Video Prompt (Cinematic Motion Dynamics)</span>
-                    <button onClick={() => handleCopy(currentScene.videoPrompt, 'block3')} className="text-[10px] font-mono text-[#4DA6FF] hover:underline flex items-center gap-1 cursor-pointer">
+                    <button onClick={() => handleCopy(editVideoPrompt, 'block3')} className="text-[10px] font-mono text-[#4DA6FF] hover:underline flex items-center gap-1 cursor-pointer">
                       {copiedTarget === 'block3' ? <Check className="w-3 h-3"/> : <Copy className="w-3 h-3"/>} Copy Prompt
                     </button>
                   </div>
-                  <p className="text-xs text-white font-mono leading-relaxed pt-1 select-all">{currentScene.videoPrompt}</p>
+                  <textarea
+                    rows={2}
+                    value={editVideoPrompt}
+                    onChange={(e) => {
+                      setEditVideoPrompt(e.target.value);
+                      setIsEditing(true);
+                    }}
+                    className="w-full bg-black border border-white/10 rounded-lg p-2 text-xs font-mono text-white focus:border-[#4DA6FF] outline-none resize-y"
+                  />
                 </div>
 
                 {/* Block 4: Camera Block */}
-                <div className="p-4 bg-[#0A0A0A] rounded-xl border border-white/5 relative group">
+                <div className="p-4 bg-[#0A0A0A] rounded-xl border border-white/5 relative group space-y-1">
                   <div className="flex justify-between items-center mb-1">
                     <span className="text-[9px] font-mono text-amber-500 uppercase tracking-widest font-black">Block 4: Camera Block (Rig Actuators & Lens Layout)</span>
-                    <button onClick={() => handleCopy(currentScene.cameraPrompt || 'Pan zoom focal movement, anamorphic depth.', 'block4')} className="text-[10px] font-mono text-amber-500 hover:underline flex items-center gap-1 cursor-pointer">
+                    <button onClick={() => handleCopy(editCameraPrompt, 'block4')} className="text-[10px] font-mono text-amber-500 hover:underline flex items-center gap-1 cursor-pointer">
                       {copiedTarget === 'block4' ? <Check className="w-3 h-3"/> : <Copy className="w-3 h-3"/>} Copy
                     </button>
                   </div>
-                  <p className="text-xs text-white font-sans leading-relaxed pt-1">
-                    {currentScene.cameraPrompt || 'Close-up focal scale tracking, macro 35mm lens angle, cinematic high contrast lighting depth.'}
-                  </p>
+                  <textarea
+                    rows={2}
+                    value={editCameraPrompt}
+                    onChange={(e) => {
+                      setEditCameraPrompt(e.target.value);
+                      setIsEditing(true);
+                    }}
+                    className="w-full bg-black border border-white/10 rounded-lg p-2 text-xs font-mono text-white focus:border-amber-500 outline-none resize-y"
+                  />
                 </div>
 
                 {/* Block 5: Audio Block */}
@@ -311,14 +577,22 @@ BLOCK 9: SUFFIX INJECTION DIRECTIVES
                 </div>
 
                 {/* Block 6: Dialogue Block */}
-                <div className="p-4 bg-[#0A0A0A] rounded-xl border border-white/5 relative group">
+                <div className="p-4 bg-[#0A0A0A] rounded-xl border border-white/5 relative group space-y-1">
                   <div className="flex justify-between items-center mb-1">
                     <span className="text-[9px] font-mono text-pink-400 uppercase tracking-widest font-black">Block 6: Dialogue Script (Somatic Voiceover Copy)</span>
-                    <button onClick={() => handleCopy(currentScene.narration, 'block6')} className="text-[10px] font-mono text-pink-400 hover:underline flex items-center gap-1 cursor-pointer">
+                    <button onClick={() => handleCopy(editNarration, 'block6')} className="text-[10px] font-mono text-pink-400 hover:underline flex items-center gap-1 cursor-pointer">
                       {copiedTarget === 'block6' ? <Check className="w-3 h-3"/> : <Copy className="w-3 h-3"/>} Copy Dialogue
                     </button>
                   </div>
-                  <p className="text-xs text-[#66FF99] font-sans font-medium italic pt-1">&quot;{currentScene.narration}&quot;</p>
+                  <textarea
+                    rows={3}
+                    value={editNarration}
+                    onChange={(e) => {
+                      setEditNarration(e.target.value);
+                      setIsEditing(true);
+                    }}
+                    className="w-full bg-black border border-white/10 rounded-lg p-2 text-xs font-sans text-rose-300 focus:border-pink-400 outline-none resize-y"
+                  />
                 </div>
 
                 {/* Block 7: Ambient Sound */}

@@ -140,6 +140,41 @@ export interface SceneCard {
   imageUrl?: string;
   status: 'idle' | 'rendering' | 'completed' | 'failed';
   attempts: number;
+  duration?: number;
+  voiceModel?: string;
+  hookScore?: number;
+  ctaScore?: number;
+  consistencyScore?: {
+    character: number;
+    product: number;
+    background: number;
+    style: number;
+  };
+}
+
+export interface ProjectSettings {
+  imageModel?: string;
+  videoModel?: string;
+  voiceEngine?: string;
+  promptArchitecture?: string;
+  renderQueueStrategy?: string;
+  workspacePreset?: string;
+  isAutoAiRouter?: boolean;
+  costScenes?: number;
+  costDuration?: number;
+  outputQuality?: string;
+  fpsSetting?: string;
+  aspectRatioSetting?: string;
+  advancedSeed?: string;
+  advancedConsistency?: number;
+  advancedCharLock?: number;
+  advancedProductLock?: number;
+  advancedMotion?: number;
+  advancedCameraFreedom?: number;
+  advancedPhysics?: number;
+  isAutoSave30s?: boolean;
+  isLocalStorageBackup?: boolean;
+  isGoogleDriveBackupSync?: boolean;
 }
 
 export interface Project {
@@ -152,6 +187,9 @@ export interface Project {
   targetDuration: number; // in seconds, editable or auto calculated
   imageModel?: ImageModel;
   videoModel?: VideoModel;
+  scriptModel?: string;
+  voiceModel?: string;
+  workspaceMode?: 'SOLO' | 'TEAM';
   createdAt: string;
   lastModified: string;
   assets: ProjectAssets;
@@ -160,6 +198,7 @@ export interface Project {
   scenes: SceneCard[];
   scriptText?: string; // Raw user script input, or AI generated script representation
   scriptInputMode: 'ai' | 'paste';
+  settings?: ProjectSettings;
   assetsAnalyzed?: boolean;
   aiDirectorCompleted?: boolean;
   scriptingCompleted?: boolean;
@@ -175,6 +214,25 @@ export interface Project {
   status?: 'Draft' | 'Analyzing' | 'Writing' | 'Generating Images' | 'Generating Videos' | 'Completed' | 'Archived';
   versionHistory?: { id: string; name: string; timestamp: string; data: string }[];
   thumbnailUrl?: string;
+  assetsSnapshot?: string;
+  masteringCompleted?: boolean;
+  costCalculator?: {
+    imageCost: number;
+    videoCost: number;
+    voiceCost: number;
+    totalCost: number;
+  };
+  dnaProfile?: {
+    videoType: 'Affiliate' | 'TVC' | 'TikTok Viral' | 'Ads' | 'Documentary';
+    targetPlatform: 'TikTok' | 'Shopee' | 'Facebook' | 'Instagram' | 'YouTube';
+    gender: 'Male' | 'Female' | 'All';
+    ageGroup: string;
+    country: string;
+    language: string;
+    videoStyle: string;
+    targetDuration: number;
+    brandName: string;
+  };
 }
 
 export type ImageModel =

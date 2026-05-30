@@ -49,12 +49,76 @@ export function useBackgroundQueue() {
   return context;
 }
 
+function reclaimStorageSpace(activeProjectId?: string) {
+  try {
+    console.warn('[STORAGE RECLAIM] Attempting to reclaim LocalStorage space...');
+    
+    // 1. Trim trash bin to release immediate memory
+    localStorage.removeItem('hidro_studio_trash_bin');
+    
+    // 2. Reduce non-active projects size by clearing out reference images (base64)
+    const storedProjects = localStorage.getItem('hidro_studio_all_projects');
+    if (storedProjects) {
+      const projectsList = JSON.parse(storedProjects);
+      if (Array.isArray(projectsList)) {
+        const trimmedList = projectsList.map((proj: any) => {
+          if (proj.id === activeProjectId) {
+            return proj; // Keep active one fully intact if possible
+          }
+          // Trim assets from other projects
+          const p = { ...proj };
+          if (p.assets) {
+            const categories: ('character' | 'product' | 'background' | 'style')[] = [
+              'character', 'product', 'background', 'style'
+            ];
+            categories.forEach(cat => {
+              const mod = p.assets?.[cat];
+              if (mod && Array.isArray(mod.items)) {
+                mod.items = mod.items.map((it: any) => ({ ...it, imageBase64: undefined }));
+              }
+            });
+          }
+          // Also clear large base64 image data from scenes of non-active projects
+          if (p.scenes) {
+            p.scenes = p.scenes.map((s: any) => {
+              if (s.imageUrl && (s.imageUrl.startsWith('data:image/svg+xml') || s.imageUrl.startsWith('<svg'))) {
+                // Keep SVG placeholders as they are lightweight
+                return s;
+              }
+              if (s.imageUrl && s.imageUrl.startsWith('data:')) {
+                // Strip heavy base64 raster images
+                return { ...s, imageUrl: '' };
+              }
+              return s;
+            });
+          }
+          return p;
+        });
+        localStorage.setItem('hidro_studio_all_projects', JSON.stringify(trimmedList));
+        console.log('[STORAGE RECLAIM] Nicely trimmed non-active project payloads.');
+      }
+    }
+  } catch (err) {
+    console.warn('[STORAGE RECLAIM] Failed during storage clearance:', err);
+  }
+}
+
 function safeSaveProject(p: Project) {
   try {
     localStorage.setItem('hidro_studio_active_project', JSON.stringify(p));
   } catch (e: any) {
-    if (e.name === 'QuotaExceededError' || e.code === 22 || e.code === 1014 || String(e).includes('QuotaExceededError')) {
-      console.warn('LocalStorage quota exceeded! Attempting to trim image assets...');
+    console.warn('LocalStorage save failed, running proactive storage reclamation...', e);
+    
+    // First, reclaim space from other projects
+    reclaimStorageSpace(p.id);
+    
+    // Now retry saving the target project
+    try {
+      localStorage.setItem('hidro_studio_active_project', JSON.stringify(p));
+      console.log('Saved active project successfully after storage reclamation!');
+    } catch (retryError) {
+      // If still failing, trim the active project itself of images
+      console.warn('Still out of space. Trimming active project asset images...');
       try {
         const trimmed: Project = JSON.parse(JSON.stringify(p));
         if (trimmed.assets) {
@@ -74,8 +138,9 @@ function safeSaveProject(p: Project) {
           });
         }
         localStorage.setItem('hidro_studio_active_project', JSON.stringify(trimmed));
-        console.log('Saved trimmed project details without heavy offline image memory.');
+        console.log('Saved active project without heavy uploaded asset base64 strings.');
       } catch (innerError) {
+        // If even that fails, aggressively strip all images/SVGs from scenes
         try {
           const minimalProject: Project = JSON.parse(JSON.stringify(p));
           if (minimalProject.scenes) {
@@ -101,13 +166,11 @@ function safeSaveProject(p: Project) {
             });
           }
           localStorage.setItem('hidro_studio_active_project', JSON.stringify(minimalProject));
-          console.log('Saved minimal project to avoid quota crash.');
+          console.log('Saved ultra-minimal project safely to prevent system crash.');
         } catch (superInnerError) {
-          console.error('Totally unable to write project to local storage:', superInnerError);
+          console.warn('System storage is completely locked by browser policies. Running in-memory-only mode.');
         }
       }
-    } else {
-      console.error('Failed storing active project details:', e);
     }
   }
 }
@@ -573,7 +636,8 @@ export function BackgroundQueueProvider({ children }: { children: React.ReactNod
                   ...currentProj,
                   scenes: processedScenes,
                   scriptText: payloadObj.mode === 'paste' ? payloadObj.rawText : 'AI script compiled',
-                  scriptingCompleted: true
+                  scriptingCompleted: true,
+                  assetsSnapshot: JSON.stringify(currentProj.assets)
                 });
               }
             } else if (data.error) {

@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { Project, ProjectAssets, SceneCard, DNALock, AIDirectorInsight } from '../types';
+import { generateUUID, getStoredProjects, saveProjectToDB, deleteProjectFromDB } from '../utils/db';
 
 export interface ProjectVersion {
   id: string;
@@ -33,6 +34,11 @@ interface ProjectContextType {
   googleSignIn: () => void;
   googleSignOut: () => void;
   triggerManualGDriveSync: (project: Project) => Promise<void>;
+  gdriveFiles: any[];
+  isLoadingGDriveFiles: boolean;
+  fetchGDriveFiles: () => Promise<void>;
+  importGDriveFile: (fileId: string) => Promise<Project>;
+  deleteGDriveFile: (fileId: string) => Promise<void>;
   
   // Project operations
   currentView: 'dashboard' | 'projects' | 'assets_library' | 'templates' | 'storage' | 'settings';
@@ -69,6 +75,7 @@ interface ProjectContextType {
   localStorageUsage: string; // Formatted storage usage string
   gdriveUsage: string;
   importProjectFile: (fileContent: string) => Promise<Project>;
+  dbLoadError?: string | null;
 }
 
 const ProjectContext = createContext<ProjectContextType | undefined>(undefined);
@@ -82,108 +89,114 @@ export function useProjects() {
 }
 
 export function ProjectProvider({ children }: { children: React.ReactNode }) {
-  const [projects, setProjects] = useState<Project[]>(() => {
-    try {
-      const stored = localStorage.getItem('hidro_studio_all_projects');
-      if (stored) {
-        return JSON.parse(stored);
-      }
-    } catch (e) {
-      console.warn('Failed restoring projects list:', e);
-    }
-    // Prepopulate with a mock project for premium feel out-of-the-box
-    return [
-      {
-        id: 'PJ_001',
-        name: 'Shopee 7.7 Blender Promotion',
-        description: 'Blender Liquid Glass style TVC template for affiliate campaigns',
-        type: 'Affiliate Marketing' as any,
-        platform: 'Shopee Video' as any,
-        sceneCount: 4,
-        targetDuration: 15,
-        imageModel: 'Imagen 4' as any,
-        videoModel: 'Veo 3.1 Quality' as any,
-        createdAt: new Date(Date.now() - 36 * 3600000).toISOString(),
-        lastModified: new Date(Date.now() - 2 * 3600000).toISOString(),
-        isFavorite: true,
-        status: 'Completed',
-        assets: {
-          character: { prompt: '', items: [] },
-          product: { prompt: 'Metallic Shopee cup', items: [] },
-          background: { prompt: 'Lounge studio ambient orange lighting', items: [] },
-          style: { prompt: 'Subtle neon backrefractions', items: [] }
-        },
-        scenes: [
-          {
-            id: 'SC_01',
-            sceneNumber: 1,
-            narration: 'Grab the summer super deals!',
-            action: 'Zooming premium Shopee vacuum tumbler cup on studio platform',
-            visualDirection: 'Macro lenses, slow dolly in',
-            imagePrompt: '[DNA_LOCKED] Vivid neon studio lighting with orange background',
-            videoPrompt: 'Smooth sliding camera, reflections on liquid glass',
-            negativePrompt: 'blur, poor render',
-            cameraPrompt: 'Slider left f/1.4',
-            motionPrompt: 'Stable fluid mechanics',
-            voicePrompt: 'Friendly female high pitch',
-            status: 'completed',
-            attempts: 1,
-            imageUrl: 'https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?auto=format&fit=crop&w=600&q=80'
-          }
-        ]
-      },
-      {
-        id: 'PJ_002',
-        name: 'TikTok Viral Serum Storyboard',
-        description: 'Fast-paced storytelling introducing skincare essence features',
-        type: 'TikTok Viral' as any,
-        platform: 'TikTok' as any,
-        sceneCount: 3,
-        targetDuration: 30,
-        imageModel: 'Nano Banana Pro' as any,
-        videoModel: 'Omni Flash' as any,
-        createdAt: new Date(Date.now() - 12 * 3600000).toISOString(),
-        lastModified: new Date(Date.now() - 15 * 60000).toISOString(),
-        isFavorite: false,
-        status: 'Writing',
-        assets: {
-          character: { prompt: 'Cute skincare model girl', items: [] },
-          product: { prompt: 'Active organic oil bottle', items: [] },
-          background: { prompt: 'Light pastel pink aesthetic bathroom', items: [] },
-          style: { prompt: 'Glass skin refractions', items: [] }
-        },
-        scenes: []
-      }
-    ];
-  });
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [trashBin, setTrashBin] = useState<Project[]>([]);
+  const [dbLoadError, setDbLoadError] = useState<string | null>(null);
 
-  const [trashBin, setTrashBin] = useState<Project[]>(() => {
-    try {
-      const stored = localStorage.getItem('hidro_studio_trash_bin');
-      return stored ? JSON.parse(stored) : [];
-    } catch {
-      return [];
-    }
-  });
+  // Load from HidroStudioDB IndexedDB on startup & handle migration
+  useEffect(() => {
+    const initDatabase = async () => {
+      try {
+        // 1. Dual-Path Migration: Migrate any legacy localStorage projects to IndexedDB
+        let legacyProjectsMigrated = false;
+        try {
+          const stored = localStorage.getItem('hidro_studio_all_projects');
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              console.log('[PROJECT RESTORED] Discovered legacy LocalStorage repository. Initiating migration...', parsed.length);
+              for (const proj of parsed) {
+                // If it's a mock project (id: PJ_001 or PJ_002), we do not necessarily need to migrate it if the user requested removing mock data
+                // But if they have customized it, let's migrate.
+                await saveProjectToDB(proj);
+              }
+              legacyProjectsMigrated = true;
+              localStorage.removeItem('hidro_studio_all_projects');
+            }
+          }
+        } catch (migErr) {
+          console.warn('[STORAGE RECLAIM] LocalStorage migration skipped or completed previously.', migErr);
+        }
+
+        // Also check if trash bin has entries and migrate them
+        try {
+          const storedTrash = localStorage.getItem('hidro_studio_trash_bin');
+          if (storedTrash) {
+            const parsedTrash = JSON.parse(storedTrash);
+            if (Array.isArray(parsedTrash) && parsedTrash.length > 0) {
+              for (const proj of parsedTrash) {
+                proj.isDeleted = true;
+                await saveProjectToDB(proj);
+              }
+              localStorage.removeItem('hidro_studio_trash_bin');
+            }
+          }
+        } catch {}
+
+        // 2. Fetch fresh index mapping from HidroStudioDB
+        const storedList = await getStoredProjects();
+        console.log('[PROJECT LOADED]', storedList);
+        
+        // Distinguish active from trash bin projects
+        const activeList = storedList.filter(p => !p.isDeleted);
+        const trashList = storedList.filter(p => p.isDeleted);
+
+        setProjects(activeList);
+        setTrashBin(trashList);
+        
+        console.log('[PROJECT RESTORED] Successfully loaded work items:', activeList.length);
+      } catch (err) {
+        console.error('[PROJECT LOADED] Error initializing persistent database layer:', err);
+        setDbLoadError('Không thể tải dữ liệu dự án');
+      }
+    };
+    initDatabase();
+  }, []);
 
   const [storageProvider, setStorageProviderState] = useState<'local' | 'gdrive'>(() => {
-    return (localStorage.getItem('hidro_studio_storage_provider') as any) || 'local';
+    try {
+      return (localStorage.getItem('hidro_studio_storage_provider') as any) || 'local';
+    } catch {
+      return 'local';
+    }
   });
 
   const [currentView, setCurrentView] = useState<'dashboard' | 'projects' | 'assets_library' | 'templates' | 'storage' | 'settings'>('dashboard');
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
 
   // Google Drive state
-  const [gdriveToken, setGdriveToken] = useState<string | null>(() => localStorage.getItem('hidro_studio_gdrive_token'));
-  const [isGDriveConnected, setIsGDriveConnected] = useState<boolean>(() => !!localStorage.getItem('hidro_studio_gdrive_token'));
+  const [gdriveToken, setGdriveToken] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem('hidro_studio_gdrive_token');
+    } catch {
+      return null;
+    }
+  });
+  const [isGDriveConnected, setIsGDriveConnected] = useState<boolean>(() => {
+    try {
+      return !!localStorage.getItem('hidro_studio_gdrive_token');
+    } catch {
+      return false;
+    }
+  });
   const [gdriveUser, setGdriveUser] = useState<any | null>(() => {
-    const stored = localStorage.getItem('hidro_studio_gdrive_user');
-    return stored ? JSON.parse(stored) : null;
+    try {
+      const stored = localStorage.getItem('hidro_studio_gdrive_user');
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
   });
   const [gdriveClientId, setGdriveClientId] = useState<string>(() => {
-    return localStorage.getItem('hidro_studio_gdrive_client_id') || '859039572948-example.apps.googleusercontent.com';
+    try {
+      return localStorage.getItem('hidro_studio_gdrive_client_id') || '859039572948-example.apps.googleusercontent.com';
+    } catch {
+      return '859039572948-example.apps.googleusercontent.com';
+    }
   });
   const [gdriveSyncLogs, setGdriveSyncLogs] = useState<SyncLog[]>([]);
+  const [gdriveFiles, setGdriveFiles] = useState<any[]>([]);
+  const [isLoadingGDriveFiles, setIsLoadingGDriveFiles] = useState<boolean>(false);
 
   // Diagnostics
   const [localStorageUsage, setLocalStorageUsage] = useState('0 KB');
@@ -212,19 +225,21 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
   // Sync state helpers to LocalStorage
   const setStorageProvider = (provider: 'local' | 'gdrive') => {
     setStorageProviderState(provider);
-    localStorage.setItem('hidro_studio_storage_provider', provider);
+    try {
+      localStorage.setItem('hidro_studio_storage_provider', provider);
+    } catch (e) {
+      console.warn('LocalStorage save storage provider blocked', e);
+    }
   };
 
-  useEffect(() => {
-    localStorage.setItem('hidro_studio_all_projects', JSON.stringify(projects));
-  }, [projects]);
+  // All project persistence is managed natively via HidroStudioDB IndexedDB.
 
   useEffect(() => {
-    localStorage.setItem('hidro_studio_trash_bin', JSON.stringify(trashBin));
-  }, [trashBin]);
-
-  useEffect(() => {
-    localStorage.setItem('hidro_studio_gdrive_client_id', gdriveClientId);
+    try {
+      localStorage.setItem('hidro_studio_gdrive_client_id', gdriveClientId);
+    } catch (e) {
+      console.warn('LocalStorage save client ID blocked', e);
+    }
   }, [gdriveClientId]);
 
   // Cleanup trash items older than 30 days on boot
@@ -311,12 +326,61 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
     setGdriveToken(null);
     setIsGDriveConnected(false);
     setGdriveUser(null);
+    setGdriveFiles([]);
     localStorage.removeItem('hidro_studio_gdrive_token');
     localStorage.removeItem('hidro_studio_gdrive_user');
   };
 
-  // Google Drive background/manual sync
+  const getSimulatedFiles = (): any[] => {
+    try {
+      const stored = localStorage.getItem('hidro_studio_simulated_gdrive');
+      if (stored) return JSON.parse(stored);
+    } catch {}
+    const defaults = [
+      {
+        id: 'sim_file_001',
+        name: 'PJ_001_Shopee_7_7_Blender_Promotion.hidro',
+        modifiedTime: new Date(Date.now() - 4 * 3600000).toISOString(),
+        size: 3840,
+        content: JSON.stringify(projects[0] || {})
+      }
+    ];
+    localStorage.setItem('hidro_studio_simulated_gdrive', JSON.stringify(defaults));
+    return defaults;
+  };
+
+  const fetchGDriveFiles = async () => {
+    if (!isGDriveConnected || !gdriveToken) return;
+    setIsLoadingGDriveFiles(true);
+    try {
+      const isSimulated = gdriveToken.startsWith('simulated_');
+      if (isSimulated) {
+        await new Promise(resolve => setTimeout(resolve, 800));
+        setGdriveFiles(getSimulatedFiles());
+      } else {
+        const qStr = "name contains '.hidro' and trashed = false";
+        const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(qStr)}&fields=files(id,name,mimeType,modifiedTime,size)&orderBy=modifiedTime desc`, {
+          headers: { Authorization: `Bearer ${gdriveToken}` }
+        });
+        if (!res.ok) throw new Error(`GDrive request failed: ${res.statusText}`);
+        const data = await res.json();
+        setGdriveFiles(data.files || []);
+      }
+    } catch (err) {
+      console.error('Error fetching Google Drive files:', err);
+    } finally {
+      setIsLoadingGDriveFiles(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isGDriveConnected && gdriveToken) {
+      fetchGDriveFiles();
+    }
+  }, [isGDriveConnected, gdriveToken]);
+
   const triggerManualGDriveSync = async (project: Project) => {
+    if (!isGDriveConnected || !gdriveToken) return;
     const logId = `sync-log-${Date.now()}`;
     const newLog: SyncLog = {
       id: logId,
@@ -328,13 +392,145 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
     setGdriveSyncLogs(prev => [newLog, ...prev].slice(0, 50));
 
     try {
-      // Simulate/Trigger API sync
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      const isSimulated = gdriveToken.startsWith('simulated_');
+      const filename = `${project.id}_${project.name.replace(/[^a-zA-Z0-9]/g, '_')}.hidro`;
       
+      if (isSimulated) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        const simFiles = getSimulatedFiles();
+        const existingIdx = simFiles.findIndex(f => f.name === filename || f.name.startsWith(project.id + '_'));
+        const fileContent = JSON.stringify(project);
+        
+        if (existingIdx >= 0) {
+          simFiles[existingIdx] = {
+            ...simFiles[existingIdx],
+            name: filename,
+            modifiedTime: new Date().toISOString(),
+            size: fileContent.length * 2,
+            content: fileContent
+          };
+        } else {
+          simFiles.push({
+            id: `sim_file_${Math.random().toString(36).substring(2, 10)}`,
+            name: filename,
+            modifiedTime: new Date().toISOString(),
+            size: fileContent.length * 2,
+            content: fileContent
+          });
+        }
+        localStorage.setItem('hidro_studio_simulated_gdrive', JSON.stringify(simFiles));
+        setGdriveFiles(simFiles);
+      } else {
+        const searchQ = `name = '${filename}' and trashed = false`;
+        const searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(searchQ)}&fields=files(id)`, {
+          headers: { Authorization: `Bearer ${gdriveToken}` }
+        });
+        if (!searchRes.ok) throw new Error(`Google Drive search file failed: ${searchRes.statusText}`);
+        const searchData = await searchRes.json();
+        const existingFile = searchData.files?.[0];
+        
+        let fileId = '';
+        if (existingFile) {
+          fileId = existingFile.id;
+          const updateRes = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+            method: 'PATCH',
+            headers: {
+              Authorization: `Bearer ${gdriveToken}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(project)
+          });
+          if (!updateRes.ok) throw new Error(`Google Drive sync write failed: ${updateRes.statusText}`);
+        } else {
+          const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${gdriveToken}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              name: filename,
+              mimeType: 'application/json'
+            })
+          });
+          if (!createRes.ok) throw new Error(`Google Drive sync folder registration failed: ${createRes.statusText}`);
+          const fileMetadata = await createRes.json();
+          fileId = fileMetadata.id;
+          
+          const uploadRes = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+            method: 'PATCH',
+            headers: {
+              Authorization: `Bearer ${gdriveToken}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(project)
+          });
+          if (!uploadRes.ok) throw new Error(`Google Drive storage upload check failed: ${uploadRes.statusText}`);
+        }
+        await fetchGDriveFiles();
+      }
+
       setGdriveSyncLogs(prev => prev.map(l => l.id === logId ? { ...l, status: 'success' } : l));
       console.log(`[GDRIVE SYNC] Synced project folder: ${project.name} successfully.`);
     } catch (err: any) {
       setGdriveSyncLogs(prev => prev.map(l => l.id === logId ? { ...l, status: 'failed', error: err.message } : l));
+    }
+  };
+
+  const importGDriveFile = async (fileId: string): Promise<Project> => {
+    if (!isGDriveConnected || !gdriveToken) throw new Error('Not connected to Google Drive');
+    try {
+      const isSimulated = gdriveToken.startsWith('simulated_');
+      let fileContent = '';
+      
+      if (isSimulated) {
+        const simFiles = getSimulatedFiles();
+        const file = simFiles.find(f => f.id === fileId);
+        if (!file) throw new Error('Simulated file not found');
+        fileContent = file.content || JSON.stringify({
+          id: 'PJ_IMPORTED',
+          name: file.name.replace('.hidro', ''),
+          description: 'Restored from Google Drive',
+          assets: { character: { prompt: '', items: [] }, product: { prompt: '', items: [] }, background: { prompt: '', items: [] }, style: { prompt: '', items: [] } },
+          scenes: [],
+          scriptInputMode: 'ai'
+        });
+      } else {
+        const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+          headers: { Authorization: `Bearer ${gdriveToken}` }
+        });
+        if (!res.ok) throw new Error(`Failed to download from GDrive: ${res.statusText}`);
+        fileContent = await res.text();
+      }
+
+      const importedProj = await importProjectFile(fileContent);
+      return importedProj;
+    } catch (err: any) {
+      console.error('Import from Google Drive error:', err);
+      throw err;
+    }
+  };
+
+  const deleteGDriveFile = async (fileId: string): Promise<void> => {
+    if (!isGDriveConnected || !gdriveToken) throw new Error('Not connected to Google Drive');
+    try {
+      const isSimulated = gdriveToken.startsWith('simulated_');
+      if (isSimulated) {
+        const simFiles = getSimulatedFiles();
+        const updated = simFiles.filter(f => f.id !== fileId);
+        localStorage.setItem('hidro_studio_simulated_gdrive', JSON.stringify(updated));
+        setGdriveFiles(updated);
+      } else {
+        const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${gdriveToken}` }
+        });
+        if (!res.ok) throw new Error(`Failed to delete Google Drive file: ${res.statusText}`);
+        await fetchGDriveFiles();
+      }
+    } catch (err: any) {
+      console.error('Delete from Google Drive error:', err);
+      throw err;
     }
   };
 
@@ -350,7 +546,7 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
     videoModel: string;
     targetLanguage?: 'Vietnamese' | 'English';
   }) => {
-    const pid = `PJ_${String(projects.length + trashBin.length + 1).padStart(3, '0')}`;
+    const pid = generateUUID();
     const newProj: Project = {
       id: pid,
       name: params.name,
@@ -383,10 +579,44 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
         style: { prompt: '', items: [] }
       },
       scenes: [],
-      scriptInputMode: 'ai'
+      scriptInputMode: 'ai',
+      settings: {
+        imageModel: params.imageModel,
+        videoModel: params.videoModel,
+        voiceEngine: localStorage.getItem('hidro_default_voice_engine') || 'ElevenLabs',
+        promptArchitecture: localStorage.getItem('hidro_prompt_architecture') || 'Standard',
+        renderQueueStrategy: localStorage.getItem('hidro_render_queue_strategy') || 'Sequential',
+        workspacePreset: localStorage.getItem('hidro_workspace_preset') || 'Standard',
+        isAutoAiRouter: localStorage.getItem('hidro_auto_ai_router') === 'true',
+        costScenes: Number(localStorage.getItem('hidro_cost_scenes') || '8'),
+        costDuration: Number(localStorage.getItem('hidro_cost_duration') || '64'),
+        outputQuality: localStorage.getItem('hidro_output_quality') || '1080p',
+        fpsSetting: localStorage.getItem('hidro_fps') || '30',
+        aspectRatioSetting: localStorage.getItem('hidro_aspect_ratio') || '16:9',
+        advancedSeed: localStorage.getItem('hidro_advanced_seed') || '42',
+        advancedConsistency: Number(localStorage.getItem('hidro_adv_consistency') || '85'),
+        advancedCharLock: Number(localStorage.getItem('hidro_adv_charlock') || '90'),
+        advancedProductLock: Number(localStorage.getItem('hidro_adv_productlock') || '75'),
+        advancedMotion: Number(localStorage.getItem('hidro_adv_motion') || '60'),
+        advancedCameraFreedom: Number(localStorage.getItem('hidro_adv_camera') || '50'),
+        advancedPhysics: Number(localStorage.getItem('hidro_adv_physics') || '40'),
+        isAutoSave30s: localStorage.getItem('hidro_autosave_30s') !== 'false',
+        isLocalStorageBackup: localStorage.getItem('hidro_local_backup') !== 'false',
+        isGoogleDriveBackupSync: localStorage.getItem('hidro_gdrive_sync_backup') === 'true'
+      }
     };
 
     newProj.versionHistory![0].data = JSON.stringify(newProj);
+
+    // Save directly to HidroStudioDB
+    saveProjectToDB(newProj)
+      .then(() => {
+        console.log('[PROJECT CREATED]', newProj);
+      })
+      .catch(err => {
+        console.error('[DATABASE ERROR] Failed saving newly created project:', err);
+      });
+
     setProjects(prev => [newProj, ...prev]);
     return newProj;
   };
@@ -414,7 +644,18 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
       updated.status = 'Archived';
     }
 
-    setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
+    setProjects(prev => {
+      const exists = prev.some(p => p.id === updated.id);
+      if (exists) {
+        return prev.map(p => p.id === updated.id ? updated : p);
+      } else {
+        return [updated, ...prev];
+      }
+    });
+
+    saveProjectToDB(updated).catch(err => {
+      console.error('[DATABASE ERROR] Failed to save updated project:', err);
+    });
 
     // Async sync with Google Drive if connected and active
     if (storageProvider === 'gdrive' && isGDriveConnected) {
@@ -437,10 +678,13 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
         data: JSON.stringify(proj)
       };
 
-      return {
+      const updated = {
         ...proj,
         versionHistory: [...history, newVersion]
       };
+
+      saveProjectToDB(updated).catch(err => console.error('[DATABASE ERROR]', err));
+      return updated;
     }));
   };
 
@@ -462,6 +706,7 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
           versionHistory: proj.versionHistory,
           lastModified: new Date().toISOString()
         };
+        saveProjectToDB(restoredProj).catch(err => console.error('[DATABASE ERROR]', err));
         return restoredProj;
       } catch {
         return proj;
@@ -476,7 +721,7 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
     const source = projects.find(p => p.id === projectId);
     if (!source) return;
 
-    const newId = `PJ_${String(projects.length + trashBin.length + 1).padStart(3, '0')}`;
+    const newId = generateUUID();
     const clone: Project = JSON.parse(JSON.stringify(source));
     
     clone.id = newId;
@@ -494,22 +739,51 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
     ];
     clone.versionHistory[0].data = JSON.stringify(clone);
 
+    saveProjectToDB(clone)
+      .then(() => {
+        console.log('[PROJECT CREATED]', clone);
+      })
+      .catch(err => {
+        console.error('[DATABASE ERROR] Failed saving duplicated project:', err);
+      });
+
     setProjects(prev => [clone, ...prev]);
   };
 
   // Toggle favorite pin
   const toggleFavorite = (projectId: string) => {
-    setProjects(prev => prev.map(p => p.id === projectId ? { ...p, isFavorite: !p.isFavorite } : p));
+    setProjects(prev => prev.map(p => {
+      if (p.id === projectId) {
+        const updated = { ...p, isFavorite: !p.isFavorite };
+        saveProjectToDB(updated).catch(e => console.error(e));
+        return updated;
+      }
+      return p;
+    }));
   };
 
   // Archive project
   const archiveProject = (projectId: string) => {
-    setProjects(prev => prev.map(p => p.id === projectId ? { ...p, isArchived: true, status: 'Archived' } : p));
+    setProjects(prev => prev.map(p => {
+      if (p.id === projectId) {
+        const updated = { ...p, isArchived: true, status: 'Archived' as any };
+        saveProjectToDB(updated).catch(e => console.error(e));
+        return updated;
+      }
+      return p;
+    }));
   };
 
   // Unarchive project
   const unarchiveProject = (projectId: string) => {
-    setProjects(prev => prev.map(p => p.id === projectId ? { ...p, isArchived: false, status: 'Draft' } : p));
+    setProjects(prev => prev.map(p => {
+      if (p.id === projectId) {
+        const updated = { ...p, isArchived: false, status: 'Draft' as any };
+        saveProjectToDB(updated).catch(e => console.error(e));
+        return updated;
+      }
+      return p;
+    }));
   };
 
   // Soft Delete - move to Trash Bin
@@ -525,6 +799,8 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
 
     setProjects(prev => prev.filter(p => p.id !== projectId));
     setTrashBin(prev => [modified, ...prev]);
+
+    saveProjectToDB(modified).catch(e => console.error(e));
   };
 
   // Restore project from Trash Bin
@@ -540,15 +816,21 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
 
     setTrashBin(prev => prev.filter(p => p.id !== projectId));
     setProjects(prev => [restored, ...prev]);
+
+    saveProjectToDB(restored).catch(e => console.error(e));
   };
 
   // Permanently delete project
   const permanentlyDeleteProject = (projectId: string) => {
     setTrashBin(prev => prev.filter(p => p.id !== projectId));
+    deleteProjectFromDB(projectId).catch(e => console.error(e));
   };
 
   // Clear entire trash bin
   const clearTrash = () => {
+    trashBin.forEach(p => {
+      deleteProjectFromDB(p.id).catch(e => console.error(e));
+    });
     setTrashBin([]);
   };
 
@@ -577,7 +859,7 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
       }
 
       // Generate a new unique ID & registration dates to prevent collisions
-      const importedId = `PJ_${String(projects.length + trashBin.length + 1).padStart(3, '0')}`;
+      const importedId = generateUUID();
       const imported: Project = {
         ...parsed,
         id: importedId,
@@ -588,6 +870,9 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
         isArchived: false,
         isDeleted: false
       };
+
+      await saveProjectToDB(imported);
+      console.log('[PROJECT CREATED]', imported);
 
       setProjects(prev => [imported, ...prev]);
       return imported;
@@ -630,7 +915,13 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
         clearTrash,
         localStorageUsage,
         gdriveUsage,
-        importProjectFile
+        importProjectFile,
+        gdriveFiles,
+        isLoadingGDriveFiles,
+        fetchGDriveFiles,
+        importGDriveFile,
+        deleteGDriveFile,
+        dbLoadError
       }}
     >
       {children}
